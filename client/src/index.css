@@ -8,3 +8,13 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
 }
+
+@keyframes pulse-bg {
+  0% { background-color: #f1f5f9; }
+  50% { background-color: #e2e8f0; }
+  100% { background-color: #f1f5f9; }
+}
+
+.animate-pulse-custom {
+  animation: pulse-bg 2s infinite ease-in-out;
+}

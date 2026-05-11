@@ -5,84 +5,70 @@ import {
   Plus, Search, Filter, TrendingUp, Clock, CheckCircle, X, AlertCircle 
 } from 'lucide-react';
 
+// --- Sub-Component: Table Skeleton Loader ---
+const TableSkeleton = () => (
+  <tr className="animate-pulse-custom">
+    <td className="px-8 py-6"><div className="h-5 bg-slate-200 rounded-lg w-3/4"></div></td>
+    <td className="px-8 py-6"><div className="h-5 bg-slate-200 rounded-lg w-1/2"></div></td>
+    <td className="px-8 py-6"><div className="h-5 bg-slate-200 rounded-lg w-20 ml-auto"></div></td>
+    <td className="px-8 py-6"><div className="h-8 bg-slate-200 rounded-full w-24 mx-auto"></div></td>
+    <td className="px-8 py-6"><div className="h-5 bg-slate-200 rounded-lg w-5 mx-auto"></div></td>
+  </tr>
+);
+
 const Dashboard = () => {
-  // --- State Management ---
+  // --- State ---
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState("");
-  
-  // Form State
   const [formData, setFormData] = useState({
-    item: '',
-    category: 'Hardware',
-    amount: '',
-    status: 'Pending',
+    item: '', category: 'Hardware', amount: '', status: 'Pending',
     date: new Date().toISOString().split('T')[0]
   });
 
-  // --- Utility: Currency Formatter ---
-  const formatCurrency = (amount) => {
+  // --- Logic: Dynamic Summary Calculations ---
+  const totalPending = recentExpenses
+    .filter(exp => exp.status === 'Pending')
+    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
+
+  const settledToday = recentExpenses
+    .filter(exp => exp.status === 'Settled')
+    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
+
+  // --- Utility: Formatters ---
+  const formatCurrency = (num) => {
     return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0
-    }).format(amount);
+      style: 'currency', currency: 'INR', maximumFractionDigits: 0
+    }).format(num);
   };
 
-  // --- Logic: Fetch Data ---
+  // --- API Actions ---
   const fetchExpenses = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get('http://localhost:8080/api/expenses');
-      setRecentExpenses(response.data);
+      const res = await axios.get('http://localhost:8080/api/expenses');
+      setRecentExpenses(res.data);
+    } catch (err) {
+      setServerError("Could not connect to the settlement server.");
+    } finally {
       setLoading(false);
-    } catch (error) {
-      console.error("Connection failed");
-      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchExpenses();
-  }, []);
-
-  // --- Logic: Validation & Submission ---
-  const validateForm = () => {
-    let tempErrors = {};
-    if (!formData.item.trim()) tempErrors.item = "Please enter what this expense was for.";
-    if (!formData.amount) {
-      tempErrors.amount = "Please enter an amount.";
-    } else if (parseFloat(formData.amount) <= 0) {
-      tempErrors.amount = "Amount must be greater than zero.";
-    }
-    
-    setErrors(tempErrors);
-    return Object.keys(tempErrors).length === 0;
-  };
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    // Clear specific field error as user types
-    if (errors[e.target.name]) {
-      setErrors({ ...errors, [e.target.name]: null });
-    }
-  };
+  useEffect(() => { fetchExpenses(); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setServerError("");
-
-    if (!validateForm()) return;
-
+    if (!formData.item || !formData.amount) return;
     try {
-      const response = await axios.post('http://localhost:8080/api/expenses', formData);
-      setRecentExpenses([response.data, ...recentExpenses]);
+      const res = await axios.post('http://localhost:8080/api/expenses', formData);
+      setRecentExpenses([res.data, ...recentExpenses]);
       setIsModalOpen(false);
       setFormData({ item: '', category: 'Hardware', amount: '', status: 'Pending', date: new Date().toISOString().split('T')[0] });
-    } catch (error) {
-      // User-friendly error message
-      setServerError("We couldn't save your claim right now. Please try again in a moment.");
+    } catch (err) {
+      setServerError("Failed to submit claim. Please try again.");
     }
   };
 
@@ -90,8 +76,8 @@ const Dashboard = () => {
     try {
       await axios.delete(`http://localhost:8080/api/expenses/${id}`);
       setRecentExpenses(recentExpenses.filter(exp => exp.id !== id));
-    } catch (error) {
-      setServerError("Could not delete this item. Please refresh and try again.");
+    } catch (err) {
+      setServerError("Unable to delete. Please refresh.");
     }
   };
 
@@ -123,26 +109,50 @@ const Dashboard = () => {
         <header className="flex justify-between items-end mb-12">
           <div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tight">Analytics</h1>
-            <p className="text-slate-500 mt-2 font-medium tracking-tight">Your reimbursement pipeline is healthy.</p>
+            <p className="text-slate-500 mt-2 font-medium">Tracking your reimbursement pipeline.</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-3 shadow-2xl shadow-indigo-200 transition-transform active:scale-95"
-          >
+          <button onClick={() => setIsModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-3 shadow-2xl shadow-indigo-200 transition-transform active:scale-95">
             <Plus size={22} strokeWidth={3} /> New Expense Claim
           </button>
         </header>
 
+        {/* --- Dynamic Stats Grid --- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+          <div className="bg-white p-8 rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+            <div className="bg-amber-100 text-amber-600 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
+              <Clock size={28} />
+            </div>
+            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider">Total Pending</p>
+            <h3 className="text-3xl font-black text-slate-900 mt-1">{formatCurrency(totalPending)}</h3>
+          </div>
+
+          <div className="bg-white p-8 rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+            <div className="bg-emerald-100 text-emerald-600 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
+              <CheckCircle size={28} />
+            </div>
+            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider">Settled Today</p>
+            <h3 className="text-3xl font-black text-slate-900 mt-1">{formatCurrency(settledToday)}</h3>
+          </div>
+
+          <div className="bg-white p-8 rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+            <div className="bg-indigo-100 text-indigo-600 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
+              <TrendingUp size={28} />
+            </div>
+            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider">Monthly Limit</p>
+            <h3 className="text-3xl font-black text-slate-900 mt-1">{formatCurrency(150000)}</h3>
+          </div>
+        </div>
+
         {/* Expense Table */}
         <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
           <div className="p-8 border-b border-slate-50 flex justify-between items-center">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">Recent Transactions</h2>
+            <h2 className="text-xl font-black text-slate-900">Recent Transactions</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="text-slate-400 uppercase text-[10px] font-black tracking-[0.2em] border-b border-slate-50">
-                  <th className="px-8 py-6">Transaction Details</th>
+                  <th className="px-8 py-6">Transaction</th>
                   <th className="px-8 py-6">Category</th>
                   <th className="px-8 py-6 text-right">Amount</th>
                   <th className="px-8 py-6 text-center">Status</th>
@@ -150,31 +160,25 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {recentExpenses.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="px-8 py-20 text-center text-slate-400 font-medium italic">
-                      No expenses found. Your settlements will appear here.
-                    </td>
-                  </tr>
+                {loading ? (
+                  <><TableSkeleton /><TableSkeleton /><TableSkeleton /></>
+                ) : recentExpenses.length === 0 ? (
+                  <tr><td colSpan="5" className="px-8 py-20 text-center text-slate-400">No records found.</td></tr>
                 ) : (
                   recentExpenses.map((exp) => (
                     <tr key={exp.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-8 py-6 font-bold text-slate-900">{exp.item}</td>
                       <td className="px-8 py-6 text-slate-500 font-medium">{exp.category}</td>
-                      <td className="px-8 py-6 text-right font-black text-slate-900">
-                        {formatCurrency(exp.amount)}
-                      </td>
+                      <td className="px-8 py-6 text-right font-black text-slate-900">{formatCurrency(exp.amount)}</td>
                       <td className="px-8 py-6 text-center">
-                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase ${
                           exp.status === 'Settled' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                         }`}>
                           {exp.status}
                         </span>
                       </td>
                       <td className="px-8 py-6 text-center">
-                        <button onClick={() => handleDelete(exp.id)} className="text-slate-300 hover:text-rose-500 transition-colors p-2">
-                          <X size={18} />
-                        </button>
+                        <button onClick={() => handleDelete(exp.id)} className="text-slate-300 hover:text-rose-500 p-2"><X size={18} /></button>
                       </td>
                     </tr>
                   ))
@@ -185,65 +189,24 @@ const Dashboard = () => {
         </div>
       </main>
 
-      {/* --- User-Facing Modal --- */}
+      {/* New Claim Modal (Submission Logic Included) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-6">
           <div className="bg-white w-full max-w-lg rounded-[48px] p-12 shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-10">
-              <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Submit Claim</h2>
-              <button onClick={() => {setIsModalOpen(false); setErrors({}); setServerError("");}} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                <X size={28} />
-              </button>
+              <h2 className="text-3xl font-black text-slate-900">Submit Claim</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400"><X size={28} /></button>
             </div>
-
-            {serverError && (
-              <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-sm font-bold">
-                <AlertCircle size={18} /> {serverError}
-              </div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-8">
               <div>
-                <label className="block text-[11px] font-black text-slate-400 mb-3 uppercase tracking-[0.15em]">Item Description</label>
-                <input 
-                  name="item" value={formData.item} onChange={handleChange}
-                  className={`w-full px-6 py-5 bg-slate-50 border-2 rounded-3xl outline-none transition-all font-bold text-slate-900 ${
-                    errors.item ? 'border-rose-300 focus:ring-rose-100' : 'border-transparent focus:ring-indigo-500/10'
-                  }`}
-                  placeholder="e.g. Flight to Mumbai Office"
-                />
-                {errors.item && <p className="text-rose-500 text-[11px] font-bold mt-3 ml-2">{errors.item}</p>}
+                <label className="block text-[11px] font-black text-slate-400 mb-3 uppercase">Item Name</label>
+                <input required name="item" value={formData.item} onChange={(e) => setFormData({...formData, item: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border-none rounded-3xl font-bold" />
               </div>
-
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <label className="block text-[11px] font-black text-slate-400 mb-3 uppercase tracking-[0.15em]">Amount</label>
-                  <input 
-                    name="amount" type="number" value={formData.amount} onChange={handleChange}
-                    className={`w-full px-6 py-5 bg-slate-50 border-2 rounded-3xl outline-none transition-all font-bold text-slate-900 ${
-                      errors.amount ? 'border-rose-300 focus:ring-rose-100' : 'border-transparent focus:ring-indigo-500/10'
-                    }`}
-                    placeholder="₹"
-                  />
-                  {errors.amount && <p className="text-rose-500 text-[11px] font-bold mt-3 ml-2">{errors.amount}</p>}
-                </div>
-                <div>
-                  <label className="block text-[11px] font-black text-slate-400 mb-3 uppercase tracking-[0.15em]">Category</label>
-                  <select 
-                    name="category" value={formData.category} onChange={handleChange}
-                    className="w-full px-6 py-5 bg-slate-50 border-transparent border-2 rounded-3xl outline-none font-bold text-slate-900 appearance-none focus:ring-indigo-500/10 transition-all"
-                  >
-                    <option>Hardware</option>
-                    <option>Meals</option>
-                    <option>Travel</option>
-                    <option>Software</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-[11px] font-black text-slate-400 mb-3 uppercase">Amount</label>
+                <input required type="number" name="amount" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border-none rounded-3xl font-bold" />
               </div>
-
-              <button type="submit" className="w-full bg-indigo-600 text-white py-6 rounded-4xl font-black shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-[0.98]">
-                Confirm & Submit
-              </button>
+              <button type="submit" className="w-full bg-indigo-600 text-white py-6 rounded-4xl font-black shadow-2xl hover:bg-indigo-700">Confirm & Submit</button>
             </form>
           </div>
         </div>
