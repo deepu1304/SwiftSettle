@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
-  LayoutDashboard, Receipt, Users, Settings, LogOut, 
-  Plus, Search, Filter, TrendingUp, Clock, CheckCircle, X, AlertCircle 
+  LayoutDashboard, Receipt, LogOut, Plus, X, Clock, CheckCircle, TrendingUp 
 } from 'lucide-react';
 
 // --- Sub-Component: Table Skeleton Loader ---
@@ -17,18 +17,27 @@ const TableSkeleton = () => (
 );
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+
   // --- State ---
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All"); // 'All', 'Pending', 'Settled'
+  
   const [formData, setFormData] = useState({
     item: '', category: 'Hardware', amount: '', status: 'Pending',
     date: new Date().toISOString().split('T')[0]
   });
 
-  // --- Logic: Dynamic Summary Calculations ---
+  // --- Logic: Session Management (Logout) ---
+  const handleLogout = () => {
+    localStorage.removeItem('userToken'); // Wipe session key
+    navigate('/', { replace: true });    // Redirect and flush navigation history
+  };
+
+  // --- Logic: Dynamic Summary Calculations (Always calculated from raw array) ---
   const totalPending = recentExpenses
     .filter(exp => exp.status === 'Pending')
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
@@ -37,6 +46,12 @@ const Dashboard = () => {
     .filter(exp => exp.status === 'Settled')
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
 
+  // --- Logic: Row Filtering Engine ---
+  const filteredExpenses = recentExpenses.filter(exp => {
+    if (statusFilter === "All") return true;
+    return exp.status === statusFilter;
+  });
+
   // --- Utility: Formatters ---
   const formatCurrency = (num) => {
     return new Intl.NumberFormat('en-IN', {
@@ -44,7 +59,7 @@ const Dashboard = () => {
     }).format(num);
   };
 
-  // --- API Actions ---
+  // --- API Integrations ---
   const fetchExpenses = async () => {
     setLoading(true);
     try {
@@ -99,7 +114,11 @@ const Dashboard = () => {
             <Receipt size={22} /> My Expenses
           </button>
         </nav>
-        <button className="flex items-center gap-4 px-5 py-4 text-slate-400 font-bold hover:text-red-600 mt-auto border-t pt-6">
+        {/* Wire up the real logout handler */}
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center gap-4 px-5 py-4 text-slate-400 font-bold hover:text-rose-600 mt-auto border-t pt-6 transition-colors"
+        >
           <LogOut size={22} /> Logout
         </button>
       </aside>
@@ -116,9 +135,9 @@ const Dashboard = () => {
           </button>
         </header>
 
-        {/* --- Dynamic Stats Grid --- */}
+        {/* Dynamic Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          <div className="bg-white p-8 rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+          <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
             <div className="bg-amber-100 text-amber-600 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
               <Clock size={28} />
             </div>
@@ -126,7 +145,7 @@ const Dashboard = () => {
             <h3 className="text-3xl font-black text-slate-900 mt-1">{formatCurrency(totalPending)}</h3>
           </div>
 
-          <div className="bg-white p-8 rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+          <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
             <div className="bg-emerald-100 text-emerald-600 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
               <CheckCircle size={28} />
             </div>
@@ -134,7 +153,7 @@ const Dashboard = () => {
             <h3 className="text-3xl font-black text-slate-900 mt-1">{formatCurrency(settledToday)}</h3>
           </div>
 
-          <div className="bg-white p-8 rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+          <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
             <div className="bg-indigo-100 text-indigo-600 w-14 h-14 rounded-2xl flex items-center justify-center mb-6">
               <TrendingUp size={28} />
             </div>
@@ -143,11 +162,29 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Expense Table */}
+        {/* Expense Table Box */}
         <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+          <div className="p-8 border-b border-slate-50 flex justify-between items-center flex-wrap gap-4">
             <h2 className="text-xl font-black text-slate-900">Recent Transactions</h2>
+            
+            {/* --- Interactive Filter Segment Control --- */}
+            <div className="bg-slate-100 p-1.5 rounded-2xl flex gap-1">
+              {['All', 'Pending', 'Settled'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setStatusFilter(tab)}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
+                    statusFilter === tab 
+                      ? 'bg-white text-slate-950 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -162,10 +199,14 @@ const Dashboard = () => {
               <tbody className="divide-y divide-slate-50">
                 {loading ? (
                   <><TableSkeleton /><TableSkeleton /><TableSkeleton /></>
-                ) : recentExpenses.length === 0 ? (
-                  <tr><td colSpan="5" className="px-8 py-20 text-center text-slate-400">No records found.</td></tr>
+                ) : filteredExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-8 py-20 text-center text-slate-400 font-medium italic">
+                      No {statusFilter !== 'All' ? statusFilter.toLowerCase() : ''} claims found.
+                    </td>
+                  </tr>
                 ) : (
-                  recentExpenses.map((exp) => (
+                  filteredExpenses.map((exp) => (
                     <tr key={exp.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-8 py-6 font-bold text-slate-900">{exp.item}</td>
                       <td className="px-8 py-6 text-slate-500 font-medium">{exp.category}</td>
@@ -178,7 +219,9 @@ const Dashboard = () => {
                         </span>
                       </td>
                       <td className="px-8 py-6 text-center">
-                        <button onClick={() => handleDelete(exp.id)} className="text-slate-300 hover:text-rose-500 p-2"><X size={18} /></button>
+                        <button onClick={() => handleDelete(exp.id)} className="text-slate-300 hover:text-rose-500 p-2 transition-colors">
+                          <X size={18} />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -189,10 +232,10 @@ const Dashboard = () => {
         </div>
       </main>
 
-      {/* New Claim Modal (Submission Logic Included) */}
+      {/* New Claim Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-6">
-          <div className="bg-white w-full max-w-lg rounded-[48px] p-12 shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-[48px] p-12 shadow-2xl">
             <div className="flex justify-between items-center mb-10">
               <h2 className="text-3xl font-black text-slate-900">Submit Claim</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400"><X size={28} /></button>
@@ -206,7 +249,7 @@ const Dashboard = () => {
                 <label className="block text-[11px] font-black text-slate-400 mb-3 uppercase">Amount</label>
                 <input required type="number" name="amount" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full px-6 py-5 bg-slate-50 border-none rounded-3xl font-bold" />
               </div>
-              <button type="submit" className="w-full bg-indigo-600 text-white py-6 rounded-4xl font-black shadow-2xl hover:bg-indigo-700">Confirm & Submit</button>
+              <button type="submit" className="w-full bg-indigo-600 text-white py-6 rounded-[32px] font-black shadow-2xl hover:bg-indigo-700">Confirm & Submit</button>
             </form>
           </div>
         </div>
