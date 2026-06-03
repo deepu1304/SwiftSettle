@@ -38,7 +38,7 @@ const Dashboard = () => {
     navigate('/', { replace: true });    
   };
 
-  // --- Logic: Dynamic Summary Calculations ---
+  // --- Logic: Dynamic Summary Calculations --
   const totalPending = recentExpenses
     .filter(exp => exp.status === 'Pending')
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
