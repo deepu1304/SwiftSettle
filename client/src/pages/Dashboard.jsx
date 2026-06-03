@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
-  LayoutDashboard, Receipt, LogOut, Plus, X, Clock, CheckCircle, TrendingUp 
+  LayoutDashboard, Receipt, LogOut, Plus, X, Clock, CheckCircle, TrendingUp, Search 
 } from 'lucide-react';
 
 // --- Sub-Component: Table Skeleton Loader ---
@@ -24,7 +24,8 @@ const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [serverError, setServerError] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All"); // 'All', 'Pending', 'Settled'
+  const [statusFilter, setStatusFilter] = useState("All"); 
+  const [searchQuery, setSearchQuery] = useState(""); // Captures search input strings
   
   const [formData, setFormData] = useState({
     item: '', category: 'Hardware', amount: '', status: 'Pending',
@@ -33,11 +34,11 @@ const Dashboard = () => {
 
   // --- Logic: Session Management (Logout) ---
   const handleLogout = () => {
-    localStorage.removeItem('userToken'); // Wipe session key
-    navigate('/', { replace: true });    // Redirect and flush navigation history
+    localStorage.removeItem('userToken'); 
+    navigate('/', { replace: true });    
   };
 
-  // --- Logic: Dynamic Summary Calculations (Always calculated from raw array) ---
+  // --- Logic: Dynamic Summary Calculations ---
   const totalPending = recentExpenses
     .filter(exp => exp.status === 'Pending')
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
@@ -46,7 +47,7 @@ const Dashboard = () => {
     .filter(exp => exp.status === 'Settled')
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
 
-  // --- Logic: Row Filtering Engine ---
+  // --- Logic: Client-Side Status Filtering Engine ---
   const filteredExpenses = recentExpenses.filter(exp => {
     if (statusFilter === "All") return true;
     return exp.status === statusFilter;
@@ -60,11 +61,18 @@ const Dashboard = () => {
   };
 
   // --- API Integrations ---
-  const fetchExpenses = async () => {
+  
+  // Enhanced to feed the search string straight to Spring Boot
+  const fetchExpenses = async (search = "") => {
     setLoading(true);
     try {
-      const res = await axios.get('http://localhost:8080/api/expenses');
+      const url = search.trim() 
+        ? `http://localhost:8080/api/expenses?search=${encodeURIComponent(search)}`
+        : 'http://localhost:8080/api/expenses';
+        
+      const res = await axios.get(url);
       setRecentExpenses(res.data);
+      setServerError("");
     } catch (err) {
       setServerError("Could not connect to the settlement server.");
     } finally {
@@ -72,7 +80,14 @@ const Dashboard = () => {
     }
   };
 
-  useEffect(() => { fetchExpenses(); }, []);
+  // Live queries data as the user types
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchExpenses(searchQuery);
+    }, 300); // 300ms debounce prevents hammering your server on every single keystroke
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -114,7 +129,6 @@ const Dashboard = () => {
             <Receipt size={22} /> My Expenses
           </button>
         </nav>
-        {/* Wire up the real logout handler */}
         <button 
           onClick={handleLogout}
           className="w-full flex items-center gap-4 px-5 py-4 text-slate-400 font-bold hover:text-rose-600 mt-auto border-t pt-6 transition-colors"
@@ -125,6 +139,12 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="flex-1 p-12 overflow-y-auto">
+        {serverError && (
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-100 text-rose-600 font-bold text-sm rounded-2xl">
+            {serverError}
+          </div>
+        )}
+
         <header className="flex justify-between items-end mb-12">
           <div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tight">Analytics</h1>
@@ -167,21 +187,41 @@ const Dashboard = () => {
           <div className="p-8 border-b border-slate-50 flex justify-between items-center flex-wrap gap-4">
             <h2 className="text-xl font-black text-slate-900">Recent Transactions</h2>
             
-            {/* --- Interactive Filter Segment Control --- */}
-            <div className="bg-slate-100 p-1.5 rounded-2xl flex gap-1">
-              {['All', 'Pending', 'Settled'].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setStatusFilter(tab)}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
-                    statusFilter === tab 
-                      ? 'bg-white text-slate-950 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+            {/* Functional Element Group: Search Bar + Tab Filter Control */}
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Database Search Input Bar */}
+              <div className="relative flex items-center">
+                <Search size={16} className="absolute left-4 text-slate-400 pointer-events-none" />
+                <input 
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search transactions..."
+                  className="pl-10 pr-4 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200/60 focus:border-indigo-500 rounded-xl text-xs font-semibold outline-none transition-all w-60"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery("")} className="absolute right-3 text-slate-400 hover:text-slate-600">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Segment Toggle Controls */}
+              <div className="bg-slate-100 p-1.5 rounded-2xl flex gap-1">
+                {['All', 'Pending', 'Settled'].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setStatusFilter(tab)}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
+                      statusFilter === tab 
+                        ? 'bg-white text-slate-950 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -202,7 +242,7 @@ const Dashboard = () => {
                 ) : filteredExpenses.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="px-8 py-20 text-center text-slate-400 font-medium italic">
-                      No {statusFilter !== 'All' ? statusFilter.toLowerCase() : ''} claims found.
+                      No matches found inside database criteria.
                     </td>
                   </tr>
                 ) : (
